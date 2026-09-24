@@ -1,0 +1,46 @@
+name: Terraform PR Validate
+
+# Credential-free checks for pull requests. Deliberately requests no OIDC token
+# and reads no secrets, so it runs for fork pull requests and for Dependabot,
+# neither of which can obtain credentials.
+
+on:
+  workflow_call:
+    inputs:
+      working-directory:
+        description: Directory holding the Terraform configuration
+        type: string
+        default: terraform
+      terraform-version:
+        description: Terraform version to install
+        type: string
+        default: latest
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ${{ inputs.working-directory }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v4
+        with:
+          terraform_version: ${{ inputs.terraform-version }}
+
+      - name: Terraform Format
+        run: terraform fmt -check -recursive
+
+      # -backend=false initialises providers and modules without touching remote
+      # state, which is what makes this job credential-free.
+      - name: Terraform Init
+        run: terraform init -backend=false -input=false
+
+      - name: Terraform Validate
+        run: terraform validate -no-color
