@@ -54,6 +54,21 @@ required reviewer.
 
 ## Usage
 
+> [!IMPORTANT]
+> **Callers must declare `permissions` themselves.** Permissions do *not* inherit
+> into a reusable workflow: a called workflow can only ever **narrow** what the
+> caller granted, never widen it, so the `permissions:` block in these files is a
+> **ceiling, not a grant**.
+>
+> If a caller stays silent, GitHub sees the called workflow request `id-token: write`
+> that the caller never held, treats it as privilege elevation, and refuses the run
+> before any job starts — `startup_failure`, with **no log, no annotation and no
+> job** to explain it.
+>
+> Declare them per job, so the credential-free `validate` job carries no id-token it
+> has no use for. Note that **`actionlint` does not model this rule** and passes the
+> broken form, so it will not catch a recurrence.
+
 ```yaml
 # .github/workflows/terraform-pr.yml
 name: Terraform PR
@@ -66,10 +81,16 @@ on:
 
 jobs:
   validate:
+    permissions:
+      contents: read
     uses: melvyndekort/gha-workflows/.github/workflows/terraform-pr-validate.yml@v1
 
   plan:
     needs: validate
+    permissions:
+      id-token: write       # assume the plan role via OIDC
+      contents: read
+      pull-requests: write  # post the plan comment
     uses: melvyndekort/gha-workflows/.github/workflows/terraform-pr-plan.yml@v1
     secrets:
       plan-role-arn: ${{ secrets.AWS_PLAN_ROLE_ARN }}
@@ -88,6 +109,9 @@ on:
 
 jobs:
   apply:
+    permissions:
+      id-token: write
+      contents: read
     uses: melvyndekort/gha-workflows/.github/workflows/terraform-apply.yml@v1
     with:
       environment: production
@@ -97,6 +121,11 @@ jobs:
 
 Callers must not set `if: github.actor != 'dependabot[bot]'` on the validate
 job — running it for Dependabot is the point.
+
+Check before renaming an apply caller: a repo's `dependabot.yml` may dispatch it
+**by name** (`gh workflow run "Deploy Infrastructure"`), because a `GITHUB_TOKEN`
+merge fires no `push` event. Renaming would break deploys for auto-merged bumps
+without anything failing loudly.
 
 ## Prerequisites per caller repo
 
