@@ -1,0 +1,59 @@
+name: Terraform Apply
+
+# Applies on main only. The apply role keeps AdministratorAccess, so this
+# workflow is the one place where a privileged credential is used — gate it with
+# a GitHub Environment (deployment branch policy + required reviewer) in the
+# caller repo.
+
+on:
+  workflow_call:
+    inputs:
+      working-directory:
+        type: string
+        default: terraform
+      terraform-version:
+        type: string
+        default: latest
+      aws-region:
+        type: string
+        default: eu-west-1
+      environment:
+        description: GitHub Environment gating the apply
+        type: string
+        default: ""
+    secrets:
+      role-arn:
+        description: ARN of the apply role (AWS_ROLE_ARN)
+        required: true
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.environment }}
+    defaults:
+      run:
+        working-directory: ${{ inputs.working-directory }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v6
+        with:
+          role-to-assume: ${{ secrets.role-arn }}
+          aws-region: ${{ inputs.aws-region }}
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v4
+        with:
+          terraform_version: ${{ inputs.terraform-version }}
+
+      - name: Terraform Init
+        run: terraform init -input=false
+
+      - name: Terraform Apply
+        run: terraform apply -auto-approve -input=false

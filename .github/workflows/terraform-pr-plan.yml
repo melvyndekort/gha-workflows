@@ -1,0 +1,110 @@
+name: Terraform PR Plan
+
+# Runs `terraform plan` on a pull request under a READ-ONLY role and posts the
+# result as a PR comment.
+#
+# Security model: the plan role's trust policy requires both the pull_request
+# subject for the calling repository AND a job_workflow_ref matching THIS file.
+# Steps defined in a caller repository carry the caller's own job_workflow_ref,
+# so code authored inside a pull request can never hold these credentials.
+# Everything that touches AWS therefore has to live in this file.
+
+on:
+  workflow_call:
+    inputs:
+      working-directory:
+        type: string
+        default: terraform
+      terraform-version:
+        type: string
+        default: latest
+      aws-region:
+        type: string
+        default: eu-west-1
+      comment-title:
+        description: Heading for the PR comment, for repos that plan more than one directory
+        type: string
+        default: Terraform
+    secrets:
+      plan-role-arn:
+        description: ARN of the read-only plan role (AWS_PLAN_ROLE_ARN)
+        required: true
+
+permissions:
+  id-token: write
+  contents: read
+  pull-requests: write
+
+jobs:
+  plan:
+    # A fork pull request receives no id-token and no secrets, so it could never
+    # succeed here. Skipping it keeps the check honest instead of permanently red.
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ${{ inputs.working-directory }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v6
+        with:
+          role-to-assume: ${{ secrets.plan-role-arn }}
+          aws-region: ${{ inputs.aws-region }}
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v4
+        with:
+          terraform_version: ${{ inputs.terraform-version }}
+
+      - name: Terraform Init
+        id: init
+        run: terraform init -input=false
+
+      # -lock=false because the plan role cannot write the state lock. A plan
+      # makes no state changes, so racing a concurrent apply only risks a stale
+      # plan, never corruption.
+      - name: Terraform Plan
+        id: plan
+        run: terraform plan -no-color -input=false -lock=false
+        continue-on-error: true
+
+      - name: Comment plan on PR
+        uses: actions/github-script@v9
+        env:
+          PLAN: ${{ steps.plan.outputs.stdout }}
+          TITLE: ${{ inputs.comment-title }}
+          INIT_OUTCOME: ${{ steps.init.outcome }}
+          PLAN_OUTCOME: ${{ steps.plan.outcome }}
+        with:
+          script: |
+            const max = 60000;
+            let plan = process.env.PLAN || '';
+            if (plan.length > max) {
+              plan = plan.slice(0, max) + '\n\n... truncated, see the workflow log for the full plan.';
+            }
+            const body = [
+              `#### ${process.env.TITLE} plan`,
+              ``,
+              `Initialization \`${process.env.INIT_OUTCOME}\` · Plan \`${process.env.PLAN_OUTCOME}\``,
+              ``,
+              `<details><summary>Show plan</summary>`,
+              ``,
+              '```terraform',
+              plan,
+              '```',
+              ``,
+              `</details>`,
+            ].join('\n');
+            await github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body,
+            });
+
+      - name: Fail if plan failed
+        if: steps.plan.outcome == 'failure'
+        run: exit 1
