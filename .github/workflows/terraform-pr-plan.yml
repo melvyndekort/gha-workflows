@@ -114,19 +114,36 @@ jobs:
         with:
           script: |
             const max = 60000;
-            let plan = process.env.PLAN || '';
+            const raw = process.env.PLAN || '';
+
+            // Terraform prints the verdict LAST, so head-truncation dropped the
+            // one line worth reading. Lift it out before truncating, and cut
+            // from the head so the tail - the actual resource changes and the
+            // summary - always survives.
+            const verdict = raw.match(
+              /^(No changes\..*|Plan: \d+ to add.*|Error: .*)$/m
+            );
+
+            let plan = raw;
+            let note = '';
             if (plan.length > max) {
-              plan = plan.slice(0, max) + '\n\n... truncated, see the workflow log for the full plan.';
+              plan = plan.slice(plan.length - max);
+              // Drop the partial first line left by slicing mid-line.
+              plan = plan.slice(plan.indexOf('\n') + 1);
+              note = '... earlier refresh output truncated, see the workflow log for the full plan.\n\n';
             }
+
             const body = [
               `#### ${process.env.TITLE} plan`,
               ``,
               `Initialization \`${process.env.INIT_OUTCOME}\` · Plan \`${process.env.PLAN_OUTCOME}\``,
               ``,
+              verdict ? `**${verdict[0].trim()}**` : `_Summary line not found; see the plan below._`,
+              ``,
               `<details><summary>Show plan</summary>`,
               ``,
               '```terraform',
-              plan,
+              note + plan,
               '```',
               ``,
               `</details>`,
