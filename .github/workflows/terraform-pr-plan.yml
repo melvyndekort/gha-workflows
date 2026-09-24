@@ -25,6 +25,24 @@ on:
         description: Heading for the PR comment, for repos that plan more than one directory
         type: string
         default: Terraform
+      tf-vars:
+        description: |
+          Extra TF_VAR_* assignments for the plan, as newline-separated NAME=VALUE
+          pairs. Intended for repos whose providers assume a different role when
+          planning than when applying, so the apply role can stay the default in
+          the Terraform code.
+
+          Do not pass secret values here. Values reach the plan as environment
+          variables and can surface in the published plan comment; they are also
+          visible in the caller workflow, which is part of the pull request.
+          Anything sensitive belongs in aws_kms_secrets instead.
+
+          Safe to accept from a pull request: a PR author may edit the caller and
+          pass anything, but the plan role can only assume the read-only plan
+          roles its IAM policy permits. Authorisation is enforced by IAM, not by
+          this input.
+        type: string
+        default: ""
     secrets:
       plan-role-arn:
         description: ARN of the read-only plan role (AWS_PLAN_ROLE_ARN)
@@ -62,6 +80,21 @@ jobs:
       - name: Terraform Init
         id: init
         run: terraform init -input=false
+
+      - name: Export plan-only TF_VARs
+        if: inputs.tf-vars != ''
+        env:
+          TF_VARS: ${{ inputs.tf-vars }}
+        # Written to GITHUB_ENV rather than interpolated into a run: script, so a
+        # value containing shell metacharacters cannot execute anything.
+        run: |
+          while IFS= read -r line; do
+            [ -z "$line" ] && continue
+            case "$line" in
+              TF_VAR_*=*) printf '%s\n' "$line" >> "$GITHUB_ENV" ;;
+              *) echo "Refusing '$line': must be TF_VAR_NAME=VALUE" >&2; exit 1 ;;
+            esac
+          done <<< "$TF_VARS"
 
       # -lock=false because the plan role cannot write the state lock. A plan
       # makes no state changes, so racing a concurrent apply only risks a stale
