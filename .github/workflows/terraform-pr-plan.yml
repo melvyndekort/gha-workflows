@@ -57,7 +57,13 @@ jobs:
   plan:
     # A fork pull request receives no id-token and no secrets, so it could never
     # succeed here. Skipping it keeps the check honest instead of permanently red.
-    if: github.event.pull_request.head.repo.full_name == github.repository
+    #
+    # Dependabot PRs are same-repo (not a fork) but GitHub withholds id-token and
+    # secrets from Dependabot-triggered runs too, so they hit the identical
+    # "Credentials could not be loaded" failure. Skip those as well.
+    if: |
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      github.actor != 'dependabot[bot]'
     runs-on: ubuntu-latest
     defaults:
       run:
