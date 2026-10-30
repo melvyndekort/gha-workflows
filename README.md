@@ -133,7 +133,7 @@ Both are set in `tf-github`'s `repositories.yaml`:
 
 - `shared_workflows: true` — allow-lists this repo. GitHub's allowed-actions
   policy covers reusable workflows, so without it the call is blocked.
-- `pr_plan_role: true` — creates the read-only plan role and distributes
+- `aws_plan_role: true` — creates the read-only plan role and distributes
   `AWS_PLAN_ROLE_ARN`.
 
 ## Versioning
