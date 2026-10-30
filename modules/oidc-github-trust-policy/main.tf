@@ -38,10 +38,12 @@ data "aws_iam_policy_document" "apply" {
       test     = "StringEquals"
       variable = "token.actions.githubusercontent.com:sub"
       values = [
-        # Immutable-subject format (embeds owner_id/repo_id), pinned to a
-        # GitHub Environment rather than a branch ref -- no
-        # `:ref:refs/heads/main` fallback.
-        "repo:${var.github_org}@${var.github_owner_id}/${var.repo_id}:environment:${var.environment}",
+        # Immutable-subject format (embeds owner_id/repo_id, not names),
+        # pinned to a GitHub Environment rather than a branch ref -- no
+        # `:ref:refs/heads/main` fallback. repo_name appears in the subject
+        # string itself (GitHub's format), even though owner_id/repo_id are
+        # what actually makes it immutable.
+        "repo:${var.github_org}@${var.github_owner_id}/${var.repo_name}@${var.repo_id}:environment:${var.environment}",
       ]
     }
   }
@@ -68,7 +70,7 @@ data "aws_iam_policy_document" "plan" {
       test     = "StringEquals"
       variable = "token.actions.githubusercontent.com:sub"
       values = [
-        "repo:${var.github_org}@${var.github_owner_id}/${var.repo_id}:pull_request",
+        "repo:${var.github_org}@${var.github_owner_id}/${var.repo_name}@${var.repo_id}:pull_request",
       ]
     }
 
