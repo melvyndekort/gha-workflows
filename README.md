@@ -122,6 +122,12 @@ jobs:
 Callers must not set `if: github.actor != 'dependabot[bot]'` on the validate
 job — running it for Dependabot is the point.
 
+## Terraform modules
+
+| Module | Used by | Purpose |
+|---|---|---|
+| `modules/oidc-github-trust-policy` | `tf-github` (`oidc_role`), `tf-aws` (`account-bootstrap`) | Shared GitHub Actions OIDC trust-policy document (apply + plan shapes), so a security-relevant fix to the trust shape is written once, not hand-ported between repos. See the module's own `README.md`. |
+
 Check before renaming an apply caller: a repo's `dependabot.yml` may dispatch it
 **by name** (`gh workflow run "Deploy Infrastructure"`), because a `GITHUB_TOKEN`
 merge fires no `push` event. Renaming would break deploys for auto-merged bumps

@@ -77,6 +77,11 @@ jobs:
         with:
           role-to-assume: ${{ secrets.plan-role-arn }}
           aws-region: ${{ inputs.aws-region }}
+          # Plan role is read-only but the session default (1h, since no role
+          # sets MaxSessionDuration) is longer than any plan run needs. 900s
+          # is AWS STS's floor for AssumeRoleWithWebIdentity. tf-github
+          # improvement plan Phase 2 item 5.
+          role-duration-seconds: 900
 
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v4
